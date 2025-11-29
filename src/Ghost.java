@@ -12,10 +12,11 @@ public class Ghost {
     private int direction;
     private Random random = new Random();
     
-    public enum Mode { CHASE, SCATTER, FRIGHTENED }
+    public enum Mode { CHASE, SCATTER, FRIGHTENED, DEAD }
     private Mode mode = Mode.CHASE;
     private Mode previousMode = Mode.CHASE;
-    private int frightenedTimer = 0; // milliseconds remaining
+    private int frightenedTimer = 0; // ticks remaining (decremented once per tick)
+    private int deadTimer = 0; // ticks remaining while in DEAD state
     private Color baseColor;
     private int scatterTargetX, scatterTargetY;
     private int directionLockMs = 0; // prevent immediate redecisions to avoid oscillation
@@ -60,12 +61,23 @@ public class Ghost {
 
     public void setMode(Mode m, int durationMs) {
         if (m == Mode.FRIGHTENED) {
-            previousMode = mode;
-            mode = Mode.FRIGHTENED;
-            frightenedTimer = durationMs;
-            color = Color.BLUE;
-            // reverse direction when frightened
-            direction = (direction + 180) % 360;
+            // only enter frightened if not already frightened
+            if (mode != Mode.FRIGHTENED) {
+                previousMode = mode;
+                mode = Mode.FRIGHTENED;
+                frightenedTimer = durationMs;
+                color = Color.BLUE;
+                // reverse direction when frightened
+                direction = (direction + 180) % 360;
+            } else {
+                // refresh timer while already frightened
+                frightenedTimer = Math.max(frightenedTimer, durationMs);
+            }
+        } else if (m == Mode.DEAD) {
+            // Enter dead mode: eyes-only. durationMs is ticks to remain dead.
+            mode = Mode.DEAD;
+            deadTimer = (durationMs > 0) ? durationMs : 60; // default ~1s
+            frightenedTimer = 0;
         } else {
             mode = m;
             if (m != Mode.FRIGHTENED) {
@@ -97,20 +109,30 @@ public class Ghost {
     }
 
     public void draw(Graphics g) {
-        // Ghost body
-        g.setColor(color);
-        g.fillRoundRect(x, y, size, size, size/2, size/2);
-        
-        // Ghost bottom wavy part
-        g.fillRect(x, y + size/2, size, size/2);
-        
-        // Eyes
-        g.setColor(Color.WHITE);
-        g.fillOval(x + size/4, y + size/4, size/4, size/4);
-        g.fillOval(x + size/2, y + size/4, size/4, size/4);
-        
-        // Pupils: compute centers and constrain inside the white eye areas
-        g.setColor(Color.BLUE);
+        // If dead, draw only the eyes (eyes remain visible while returning to center)
+        if (mode == Mode.DEAD) {
+            // Eyes (white)
+            g.setColor(Color.WHITE);
+            g.fillOval(x + size/4, y + size/4, size/4, size/4);
+            g.fillOval(x + size/2, y + size/4, size/4, size/4);
+            // Pupils: draw as dark/black while dead
+            g.setColor(Color.BLACK);
+        } else {
+            // Ghost body
+            g.setColor(color);
+            g.fillRoundRect(x, y, size, size, size/2, size/2);
+            
+            // Ghost bottom wavy part
+            g.fillRect(x, y + size/2, size, size/2);
+            
+            // Eyes
+            g.setColor(Color.WHITE);
+            g.fillOval(x + size/4, y + size/4, size/4, size/4);
+            g.fillOval(x + size/2, y + size/4, size/4, size/4);
+            
+            // Pupils: compute centers and constrain inside the white eye areas
+            g.setColor(Color.BLUE);
+        }
         int eyeW = size / 4;
         int eyeH = size / 4;
         int leftEyeX = x + size / 4;
@@ -171,12 +193,23 @@ public class Ghost {
         // Random movement for now - can be improved with pathfinding
         // Update frightened timer
         if (mode == Mode.FRIGHTENED) {
-            frightenedTimer -= deltaMs;
+            // frightenedTimer is in ticks (decrement once per move call)
+            frightenedTimer -= 1;
             if (frightenedTimer <= 0) {
                 mode = previousMode;
                 color = baseColor;
                 frightenedTimer = 0;
             }
+        } else if (mode == Mode.DEAD) {
+            // While dead, stay put (we expect Maze to have teleported the ghost to center)
+            deadTimer -= 1;
+            if (deadTimer <= 0) {
+                mode = Mode.CHASE;
+                color = baseColor;
+                previousMode = Mode.CHASE;
+                deadTimer = 0;
+            }
+            return; // skip movement while dead
         } else {
             // Occasionally change direction randomly when not in a targeted mode
             if (random.nextInt(50) == 0) {
@@ -291,7 +324,6 @@ public class Ghost {
                 x = newX;
             } else {
                 // If blocked, pick an alternative direction (try orthogonal moves)
-                int oldDir = direction;
                 boolean moved = tryAlternateDirections(walls, others, true);
                 if (!moved) {
                     direction = random.nextInt(4) * 90;
@@ -337,6 +369,17 @@ public class Ghost {
                 else {
                     directionLockMs = 200;
                 }
+            }
+        }
+
+        // After moving, if dead and reached maze center, revive
+        if (mode == Mode.DEAD) {
+            int centerX = maze.getCenterX();
+            int centerY = maze.getCenterY();
+            if (x == centerX && y == centerY) {
+                mode = Mode.CHASE;
+                color = baseColor;
+                previousMode = Mode.CHASE;
             }
         }
     }

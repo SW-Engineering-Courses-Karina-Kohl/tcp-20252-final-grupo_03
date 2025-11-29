@@ -48,6 +48,7 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
     private int poweredUpTimer = 0;
     private GameTimer gameTimer;
     private final int POWERUP_DURATION = 400;
+    private final int GHOST_DEAD_DURATION = 60; // ticks the ghost stays dead before reviving
 
     public Maze(){
         setPreferredSize(new Dimension(TILE_SIZE * COLUMNS, TILE_SIZE * ROWS));
@@ -225,16 +226,43 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
             if (isColliding(pacman, pellet)) {
                 pellets.remove(i);
                 score += pellet.isPowerPellet() ? 50 : 10;
-                if (pellet.isPowerPellet() == true) poweredUpTimer = POWERUP_DURATION;
+                if (pellet.isPowerPellet() == true) {
+                    poweredUpTimer = POWERUP_DURATION;
+                    // put all ghosts into frightened mode for the duration (ticks)
+                    for (Ghost g : ghosts) {
+                        g.setMode(Ghost.Mode.FRIGHTENED, POWERUP_DURATION);
+                    }
+                }
             }
         }
         
         // Check ghost collisions
         for (Ghost ghost : ghosts) {
             if (isColliding(pacman, ghost)) {
-                gameOver = true;
+                if (ghost.getMode() == Ghost.Mode.FRIGHTENED) {
+                    // Pacman eats frightened ghost: teleport ghost to center and set DEAD timer
+                    int cx = getCenterX();
+                    int cy = getCenterY();
+                    ghost.setX(cx);
+                    ghost.setY(cy);
+                    ghost.setMode(Ghost.Mode.DEAD, GHOST_DEAD_DURATION);
+                } else if (ghost.getMode() == Ghost.Mode.DEAD) {
+                    // already dead, ignore
+                } else {
+                    // normal ghost kills Pacman
+                    gameOver = true;
+                }
             }
         }
+    }
+
+    // Return the maze center coordinates (tile-aligned)
+    public int getCenterX() {
+        return (COLUMNS / 2) * TILE_SIZE;
+    }
+
+    public int getCenterY() {
+        return (ROWS / 2) * TILE_SIZE;
     }
     
     // Simple collision detection
