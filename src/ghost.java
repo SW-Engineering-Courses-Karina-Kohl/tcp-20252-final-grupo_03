@@ -36,25 +36,61 @@ public class Ghost {
         g.fillOval(x + size/4, y + size/4, size/4, size/4);
         g.fillOval(x + size/2, y + size/4, size/4, size/4);
         
-        // Pupils
+        // Pupils: compute centers and constrain inside the white eye areas
         g.setColor(Color.BLUE);
-        int pupilOffset = 0;
+        int eyeW = size / 4;
+        int eyeH = size / 4;
+        int leftEyeX = x + size / 4;
+        int rightEyeX = x + size / 2;
+        int eyeY = y + size / 4;
+
+        int leftCenterX = leftEyeX + eyeW / 2;
+        int rightCenterX = rightEyeX + eyeW / 2;
+        int centerY = eyeY + eyeH / 2;
+
+        int pupilSize = size / 8;
+        int pr = pupilSize / 2; // pupil radius
+        int offset = Math.max(1, size / 16); // how far the pupil moves
+
+        int pupilLeftX = leftCenterX;
+        int pupilLeftY = centerY;
+        int pupilRightX = rightCenterX;
+        int pupilRightY = centerY;
+
         switch (direction) {
             case 0: // Right
-                pupilOffset = 2;
+                pupilLeftX += offset;
+                pupilRightX += offset;
                 break;
             case 90: // Down
-                pupilOffset = 2;
+                pupilLeftY += offset;
+                pupilRightY += offset;
                 break;
             case 180: // Left
-                pupilOffset = -2;
+                pupilLeftX -= offset;
+                pupilRightX -= offset;
                 break;
             case 270: // Up
-                pupilOffset = -2;
+                pupilLeftY -= offset;
+                pupilRightY -= offset;
                 break;
         }
-        g.fillOval(x + size/4 + pupilOffset, y + size/4 + pupilOffset, size/8, size/8);
-        g.fillOval(x + size/2 + pupilOffset, y + size/4 + pupilOffset, size/8, size/8);
+
+        // Clamp pupils so they never leave the white eye area
+        int leftMinX = leftEyeX + pr;
+        int leftMaxX = leftEyeX + eyeW - pr;
+        int rightMinX = rightEyeX + pr;
+        int rightMaxX = rightEyeX + eyeW - pr;
+        int minY = eyeY + pr;
+        int maxY = eyeY + eyeH - pr;
+
+        pupilLeftX = Math.max(leftMinX, Math.min(pupilLeftX, leftMaxX));
+        pupilLeftY = Math.max(minY, Math.min(pupilLeftY, maxY));
+        pupilRightX = Math.max(rightMinX, Math.min(pupilRightX, rightMaxX));
+        pupilRightY = Math.max(minY, Math.min(pupilRightY, maxY));
+
+        g.fillOval(pupilLeftX - pr, pupilLeftY - pr, pupilSize, pupilSize);
+        g.fillOval(pupilRightX - pr, pupilRightY - pr, pupilSize, pupilSize);
     }
     
     public void move() {
