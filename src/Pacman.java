@@ -112,6 +112,17 @@ public class Pacman {
                 x -= speed;
                 break;
         }
+        //Teleporte
+        int screenWidth = Maze.COLUMNS * Maze.TILE_SIZE;
+
+        //Se saiu completamente pela direita -> vai para a esquerda
+        if (this.x > screenWidth) {
+            this.x = -this.size;
+        } 
+        //Se saiu completamente pela esquerda -> vai para a direita
+        else if (this.x < -this.size) {
+            this.x = screenWidth;
+        }
     }
 
     public int getX() { return x; }
