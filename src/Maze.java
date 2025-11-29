@@ -41,6 +41,7 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
     private Timer timer;
     private int score = 0;
     private boolean gameOver = false;
+    private GameTimer gameTimer;
 
     public Maze(){
         setPreferredSize(new Dimension(TILE_SIZE * COLUMNS, TILE_SIZE * ROWS));
@@ -50,10 +51,12 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
         walls = new ArrayList<>();
         ghosts = new ArrayList<>();
 
+	gameTimer = new GameTimer();
         loadMaze();
         System.out.println(pellets.size() + " pellets");
         timer = new Timer(16, this);
         timer.start();
+	gameTimer.start();
 
         setFocusable(true);
     }
@@ -111,6 +114,7 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
             // Check win condition
             if (pellets.isEmpty()) {
                 gameOver = true;
+		gameTimer.stop();
             }
         }
         
@@ -143,9 +147,11 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
         g.setColor(Color.WHITE);
         g.setFont(new Font("Arial", Font.BOLD, 16));
         g.drawString("Score: " + score, 10, 20);
+	gameTimer.draw(g, getWidth() - 100, 20);
         
         // Draw game over message
         if (gameOver) {
+	    gameTimer.stop();
             g.setFont(new Font("Arial", Font.BOLD, 40));
             if (pellets.isEmpty()) {
                 g.drawString("YOU WIN!", getWidth()/2 - 100, getHeight()/2);
