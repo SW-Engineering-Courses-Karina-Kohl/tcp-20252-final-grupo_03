@@ -18,7 +18,7 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
         "XXXXXXXXXXXXXXXXXXX",
         "X        X        X",
         "X XX XXX X XXX XX X",
-        "X                 X",
+        "X.               .X",
         "X XX X XXXXX X XX X",
         "X    X       X    X",
         "XXXX XXXX XXXX XXXX",
@@ -30,7 +30,7 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
         "XXXX X XXXXX X XXXX",
         "X        X        X",
         "X XX XXX X XXX XX X",
-        "X  X     P     X  X",
+        "X. X     P     X .X",
         "XX X X XXXXX X X XX",
         "X    X   X   X    X",
         "X XXXXXX X XXXXXX X",
@@ -45,7 +45,9 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
     private Timer timer;
     private int score = 0;
     private boolean gameOver = false;
+    private int poweredUpTimer = 0;
     private GameTimer gameTimer;
+    private final int POWERUP_DURATION = 400;
 
     public Maze(){
         setPreferredSize(new Dimension(TILE_SIZE * COLUMNS, TILE_SIZE * ROWS));
@@ -105,6 +107,7 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
         if (!gameOver) {
             // Update game state
             if (pacman.willUpdate) pacman.update();
+            if (poweredUpTimer > 0) poweredUpTimer -= 1;
             
             int deltaMs = timer.getDelay(); // tick duration (ms)
             // Move ghosts
@@ -151,6 +154,7 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
         g.setColor(Color.WHITE);
         g.setFont(new Font("Arial", Font.BOLD, 16));
         g.drawString("Score: " + score, 10, 20);
+        g.drawString((poweredUpTimer > 0) ? String.valueOf(poweredUpTimer) : " ", 250, 20);
 	gameTimer.draw(g, getWidth() - 100, 20);
         
         // Draw game over message
@@ -221,6 +225,7 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
             if (isColliding(pacman, pellet)) {
                 pellets.remove(i);
                 score += pellet.isPowerPellet() ? 50 : 10;
+                if (pellet.isPowerPellet() == true) poweredUpTimer = POWERUP_DURATION;
             }
         }
         
