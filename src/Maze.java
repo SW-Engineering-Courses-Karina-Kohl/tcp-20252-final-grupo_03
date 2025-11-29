@@ -99,9 +99,10 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
             // Update game state
             pacman.update();
             
+            int deltaMs = timer.getDelay(); // tick duration (ms)
             // Move ghosts
             for (Ghost ghost : ghosts) {
-                ghost.move();
+                ghost.move(walls, ghosts, pacman, deltaMs, this);
             }
             
             // Check collisions

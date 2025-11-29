@@ -10,11 +10,11 @@ import java.util.Map;
 public class Pacman {
     private int x, y;
     private final int size = Maze.TILE_SIZE;
-    private final int speed = 5;
+    private final int speed = 2;
     
-    private final Map<String, BufferedImage> images;
+    private final Map<Integer, BufferedImage> images;
     
-    private String currentDirection = "right";
+    private int currentDirection = KeyEvent.VK_RIGHT;
 
     public Pacman(int startX, int startY) {
         this.x = startX;
@@ -26,14 +26,13 @@ public class Pacman {
 
     private void loadImages() {
         try {
-    
-            images.put("up", ImageIO.read(new File("pacman_up.png")));
-            images.put("down", ImageIO.read(new File("pacman_down.png")));
-            images.put("left", ImageIO.read(new File("pacman_left.png")));
-            images.put("right", ImageIO.read(new File("pacman_right.png")));
-        } catch (IOException exc) {
+            images.put(KeyEvent.VK_UP, ImageIO.read(getClass().getResource("/images/pacman_up.png")));
+            images.put(KeyEvent.VK_DOWN, ImageIO.read(getClass().getResource("/images/pacman_down.png")));
+            images.put(KeyEvent.VK_LEFT, ImageIO.read(getClass().getResource("/images/pacman_left.png")));
+            images.put(KeyEvent.VK_RIGHT, ImageIO.read(getClass().getResource("/images/pacman_right.png")));
+        } catch (IOException | IllegalArgumentException exc) {
             System.out.println("Erro ao carregar imagem do Pac-Man: " + exc.getMessage());
-        } 
+        }
     }
 
     public void draw(Graphics g) {
@@ -48,20 +47,47 @@ public class Pacman {
         int key = e.getKeyCode();
         
         if (key == KeyEvent.VK_UP) {
-            this.y += -speed;
-            currentDirection = "up"; 
+            this.y -= speed;
+            currentDirection = KeyEvent.VK_UP;
         }
         else if (key == KeyEvent.VK_RIGHT) {
             this.x += speed;
-            currentDirection = "right"; 
+            currentDirection = KeyEvent.VK_RIGHT;
         }
         else if (key == KeyEvent.VK_DOWN) {
             this.y += speed;
-            currentDirection = "down"; 
+            currentDirection = KeyEvent.VK_DOWN;
         }
         else if (key == KeyEvent.VK_LEFT) {
-            this.x += -speed;
-            currentDirection = "left"; 
+            this.x -= speed;
+            currentDirection = KeyEvent.VK_LEFT;
         }
     }
+
+    public void update() {
+        switch (currentDirection) {
+            case KeyEvent.VK_UP:
+                y -= speed;
+                break;
+            case KeyEvent.VK_RIGHT:
+                x += speed;
+                break;
+            case KeyEvent.VK_DOWN:
+                y += speed;
+                break;
+            case KeyEvent.VK_LEFT:
+                x -= speed;
+                break;
+        }
+    }
+
+    public int getX() { return x; }
+    public int getY() { return y; }
+    public int getSize() { return size; }
+
+    public void setX(int x) { this.x = x; }
+    public void setY(int y) { this.y = y; }
+
+    public int getDirection() { return currentDirection; }
 }
+
