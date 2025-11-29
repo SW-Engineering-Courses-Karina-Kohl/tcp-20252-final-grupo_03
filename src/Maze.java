@@ -7,6 +7,10 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
     public static final int TILE_SIZE = 32;
     public static final int ROWS = 21;
     public static final int COLUMNS = 19;
+    public static final int TURN_UP_QUEUE = 8;
+    public static final int TURN_LEFT_QUEUE = 4;
+    public static final int TURN_RIGHT_QUEUE = 6;
+    public static final int TURN_DOWN_QUEUE = 2;
 
     //X = wall, O = skip, P = pac man, ' ' = food, . = power pellet
     //Ghosts: b = blue, o = orange, p = pink, r = red
@@ -81,16 +85,16 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
                     walls.add(new Wall(x, y));
                 }
                 else if(tile == 'r'){
-                    ghosts.add(new Blinky(x, y));
+                    ghosts.add(new Ghost(x, y, Ghost.BLINKY_COLOR));
                 }
                 else if(tile == 'p'){
-                    ghosts.add(new Pinky(x, y));
+                    ghosts.add(new Ghost(x, y, Ghost.PINKY_COLOR));
                 }
                 else if(tile == 'b'){
-                    ghosts.add(new Inky(x, y));
+                    ghosts.add(new Ghost(x, y, Ghost.INKY_COLOR));
                 }
                 else if(tile == 'o'){
-                    ghosts.add(new Clyde(x, y));
+                    ghosts.add(new Ghost(x, y, Ghost.CLYDE_COLOR));
                 }
             }
         }
@@ -100,7 +104,7 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
     public void actionPerformed(ActionEvent e) {
         if (!gameOver) {
             // Update game state
-            pacman.update();
+            if (pacman.willUpdate) pacman.update();
             
             int deltaMs = timer.getDelay(); // tick duration (ms)
             // Move ghosts
@@ -180,24 +184,35 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
     
     private void checkCollisions() {
         // Check wall collisions
+        boolean changeDirection = true;
+        pacman.willUpdate = true;
         for (Wall wall : walls) {
-            if (isColliding(pacman, wall)) {
+            //if (isColliding(pacman, wall)) {
                 // Reset pacman position based on direction
-                switch (pacman.getDirection()) {
-                    case KeyEvent.VK_UP:
-                        pacman.setY(wall.getY() + wall.getSize());
-                        break;
-                    case KeyEvent.VK_RIGHT:
-                        pacman.setX(wall.getX() - pacman.getSize());
-                        break;
-                    case KeyEvent.VK_DOWN:
-                        pacman.setY(wall.getY() - pacman.getSize());
-                        break;
-                    case KeyEvent.VK_LEFT:
-                        pacman.setX(wall.getX() + wall.getSize());
-                        break;
-                }
+            //    switch (pacman.getDirection()) {
+            //        case KeyEvent.VK_UP:
+            //            pacman.setY(wall.getY() + wall.getSize());
+            //            break;
+            //        case KeyEvent.VK_RIGHT:
+            //            pacman.setX(wall.getX() - pacman.getSize());
+            //            break;
+            //        case KeyEvent.VK_DOWN:
+            //            pacman.setY(wall.getY() - pacman.getSize());
+            //            break;
+            //        case KeyEvent.VK_LEFT:
+            //            pacman.setX(wall.getX() + wall.getSize());
+            //            break;
+            //    }
+            //}
+            if (willCollide(pacman, wall) == true) {
+                changeDirection = false;
             }
+            if (isColliding(pacman, wall) == true) {
+                pacman.willUpdate = false;
+            }
+        }
+        if (changeDirection) {
+            pacman.setDirection();
         }
         
         // Check pellet collisions
@@ -218,11 +233,55 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
     }
     
     // Simple collision detection
+    //private boolean isColliding(Pacman pacman, Wall wall) {
+    //    return pacman.getX() < wall.getX() + wall.getSize() &&
+    //           pacman.getX() + pacman.getSize() > wall.getX() &&
+    //           pacman.getY() < wall.getY() + wall.getSize() &&
+    //           pacman.getY() + pacman.getSize() > wall.getY();
+    //}
+
     private boolean isColliding(Pacman pacman, Wall wall) {
-        return pacman.getX() < wall.getX() + wall.getSize() &&
+        switch(pacman.currentDirection) {
+            case KeyEvent.VK_UP: return pacman.getX() < wall.getX() + wall.getSize() &&
                pacman.getX() + pacman.getSize() > wall.getX() &&
+               pacman.getY() - 2 < wall.getY() + wall.getSize() &&
+               pacman.getY() + pacman.getSize() - 2 > wall.getY();
+            case KeyEvent.VK_LEFT: return pacman.getX() - 2 < wall.getX() + wall.getSize() &&
+               pacman.getX() + pacman.getSize() - 2 > wall.getX() &&
                pacman.getY() < wall.getY() + wall.getSize() &&
                pacman.getY() + pacman.getSize() > wall.getY();
+            case KeyEvent.VK_RIGHT: return pacman.getX() + 2 < wall.getX() + wall.getSize() &&
+               pacman.getX() + pacman.getSize() + 2 > wall.getX() &&
+               pacman.getY() < wall.getY() + wall.getSize() &&
+               pacman.getY() + pacman.getSize() > wall.getY();
+            case KeyEvent.VK_DOWN: return pacman.getX() < wall.getX() + wall.getSize() &&
+               pacman.getX() + pacman.getSize() > wall.getX() &&
+               pacman.getY() + 2 < wall.getY() + wall.getSize() &&
+               pacman.getY() + pacman.getSize() + 2 > wall.getY();
+            default: return false;
+        }
+    }
+
+    private boolean willCollide(Pacman pacman, Wall wall) {
+        switch(pacman.turnDirection) {
+            case TURN_UP_QUEUE: return pacman.getX() < wall.getX() + wall.getSize() &&
+               pacman.getX() + pacman.getSize() > wall.getX() &&
+               pacman.getY() - 2 < wall.getY() + wall.getSize() &&
+               pacman.getY() + pacman.getSize() - 2 > wall.getY();
+            case TURN_LEFT_QUEUE: return pacman.getX() - 2 < wall.getX() + wall.getSize() &&
+               pacman.getX() + pacman.getSize() - 2 > wall.getX() &&
+               pacman.getY() < wall.getY() + wall.getSize() &&
+               pacman.getY() + pacman.getSize() > wall.getY();
+            case TURN_RIGHT_QUEUE: return pacman.getX() + 2 < wall.getX() + wall.getSize() &&
+               pacman.getX() + pacman.getSize() + 2 > wall.getX() &&
+               pacman.getY() < wall.getY() + wall.getSize() &&
+               pacman.getY() + pacman.getSize() > wall.getY();
+            case TURN_DOWN_QUEUE: return pacman.getX() < wall.getX() + wall.getSize() &&
+               pacman.getX() + pacman.getSize() > wall.getX() &&
+               pacman.getY() + 2 < wall.getY() + wall.getSize() &&
+               pacman.getY() + pacman.getSize() + 2 > wall.getY();
+            default: return false;
+        }
     }
     
     private boolean isColliding(Pacman pacman, Pellet pellet) {

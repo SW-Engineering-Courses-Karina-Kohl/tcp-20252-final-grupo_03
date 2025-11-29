@@ -11,10 +11,16 @@ public class Pacman {
     private int x, y;
     private final int size = Maze.TILE_SIZE;
     private final int speed = 2;
+    public static final int TURN_UP_QUEUE = 8;
+    public static final int TURN_LEFT_QUEUE = 4;
+    public static final int TURN_RIGHT_QUEUE = 6;
+    public static final int TURN_DOWN_QUEUE = 2;
     
     private final Map<Integer, BufferedImage> images;
     
-    private int currentDirection = KeyEvent.VK_RIGHT;
+    public int currentDirection = KeyEvent.VK_RIGHT;
+    public int turnDirection = 6;
+    public boolean willUpdate = true;
 
     public Pacman(int startX, int startY) {
         this.x = startX;
@@ -43,24 +49,51 @@ public class Pacman {
         }
     }
 
+    //public void move(KeyEvent e) {
+    //    int key = e.getKeyCode();
+        
+    //    if (key == KeyEvent.VK_UP) {
+    //        this.y -= speed;
+    //        currentDirection = KeyEvent.VK_UP;
+    //    }
+    //    else if (key == KeyEvent.VK_RIGHT) {
+    //        this.x += speed;
+    //        currentDirection = KeyEvent.VK_RIGHT;
+    //    }
+    //    else if (key == KeyEvent.VK_DOWN) {
+    //        this.y += speed;
+    //        currentDirection = KeyEvent.VK_DOWN;
+    //    }
+    //    else if (key == KeyEvent.VK_LEFT) {
+    //        this.x -= speed;
+    //        currentDirection = KeyEvent.VK_LEFT;
+    //    }
+    //}
+
     public void move(KeyEvent e) {
         int key = e.getKeyCode();
         
-        if (key == KeyEvent.VK_UP) {
-            this.y -= speed;
+        switch (key) {
+            case KeyEvent.VK_UP -> this.turnDirection = 8;
+            case KeyEvent.VK_RIGHT -> this.turnDirection = 6;
+            case KeyEvent.VK_DOWN -> this.turnDirection = 2;
+            case KeyEvent.VK_LEFT -> this.turnDirection = 4;
+            default -> this.turnDirection = this.turnDirection;
+        }
+    }
+
+    public void setDirection() {
+        if (this.turnDirection == TURN_UP_QUEUE) {
             currentDirection = KeyEvent.VK_UP;
         }
-        else if (key == KeyEvent.VK_RIGHT) {
-            this.x += speed;
+        else if (this.turnDirection == TURN_LEFT_QUEUE) {
+            currentDirection = KeyEvent.VK_LEFT;
+        }
+        else if (this.turnDirection == TURN_RIGHT_QUEUE) {
             currentDirection = KeyEvent.VK_RIGHT;
         }
-        else if (key == KeyEvent.VK_DOWN) {
-            this.y += speed;
+        else if (this.turnDirection == TURN_DOWN_QUEUE) {
             currentDirection = KeyEvent.VK_DOWN;
-        }
-        else if (key == KeyEvent.VK_LEFT) {
-            this.x -= speed;
-            currentDirection = KeyEvent.VK_LEFT;
         }
     }
 
