@@ -48,7 +48,7 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
     private int poweredUpTimer = 0;
     private GameTimer gameTimer;
     private final int POWERUP_DURATION = 400;
-    private final int GHOST_DEAD_DURATION = 60; // ticks the ghost stays dead before reviving
+    private final int GHOST_DEAD_DURATION = 20; // ticks the ghost stays dead before reviving
 
     public Maze(){
         setPreferredSize(new Dimension(TILE_SIZE * COLUMNS, TILE_SIZE * ROWS));
@@ -223,7 +223,12 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
         // Check pellet collisions
         for (int i = pellets.size() - 1; i >= 0; i--) {
             Pellet pellet = pellets.get(i);
-            if (isColliding(pacman, pellet)) {
+                if (isColliding(pacman, pellet)) {
+                // If pellet is a power pellet and Pacman already powered up, ignore it
+                if (pellet.isPowerPellet() && poweredUpTimer > 0) {
+                    // do nothing (cannot pick up another power pellet while frightened)
+                    continue;
+                }
                 pellets.remove(i);
                 score += pellet.isPowerPellet() ? 50 : 10;
                 if (pellet.isPowerPellet() == true) {
@@ -240,11 +245,7 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
         for (Ghost ghost : ghosts) {
             if (isColliding(pacman, ghost)) {
                 if (ghost.getMode() == Ghost.Mode.FRIGHTENED) {
-                    // Pacman eats frightened ghost: teleport ghost to center and set DEAD timer
-                    int cx = getCenterX();
-                    int cy = getCenterY();
-                    ghost.setX(cx);
-                    ghost.setY(cy);
+                    // Pacman eats frightened ghost: set ghost to DEAD; it will walk back to its home
                     ghost.setMode(Ghost.Mode.DEAD, GHOST_DEAD_DURATION);
                 } else if (ghost.getMode() == Ghost.Mode.DEAD) {
                     // already dead, ignore
@@ -328,6 +329,66 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
                                    Math.pow(pacmanCenterY - pelletCenterY, 2));
         
         return distance < (pacman.getSize() / 2 + pellet.getSize() / 2);
+    }
+
+    // Compute a tile-aligned direction (0=right,90=down,180=left,270=up)
+    // from (fromX,fromY) to (toX,toY) using BFS on the maze grid.
+    // Returns -1 if no path found.
+    public int getNextDirectionTowards(int fromX, int fromY, int toX, int toY) {
+        int fromTileX = fromX / TILE_SIZE;
+        int fromTileY = fromY / TILE_SIZE;
+        int toTileX = toX / TILE_SIZE;
+        int toTileY = toY / TILE_SIZE;
+
+        if (fromTileX == toTileX && fromTileY == toTileY) return -1;
+
+        boolean[][] visited = new boolean[ROWS][COLUMNS];
+        int[][] px = new int[ROWS][COLUMNS];
+        int[][] py = new int[ROWS][COLUMNS];
+        java.util.ArrayDeque<int[]> q = new java.util.ArrayDeque<>();
+        q.add(new int[] {fromTileX, fromTileY});
+        visited[fromTileY][fromTileX] = true;
+        boolean found = false;
+
+        int[][] dirs = new int[][] {{1,0},{-1,0},{0,1},{0,-1}};
+
+        while (!q.isEmpty()) {
+            int[] cur = q.removeFirst();
+            int cx = cur[0], cy = cur[1];
+            if (cx == toTileX && cy == toTileY) { found = true; break; }
+            for (int[] d : dirs) {
+                int nx = cx + d[0];
+                int ny = cy + d[1];
+                if (nx < 0 || nx >= COLUMNS || ny < 0 || ny >= ROWS) continue;
+                if (visited[ny][nx]) continue;
+                char tile = grid[ny].charAt(nx);
+                if (tile == 'X') continue; // wall
+                visited[ny][nx] = true;
+                px[ny][nx] = cx;
+                py[ny][nx] = cy;
+                q.add(new int[] {nx, ny});
+            }
+        }
+
+        if (!found) return -1;
+
+        // backtrack from target to find the first step
+        int bx = toTileX, by = toTileY;
+        while (!(px[by][bx] == fromTileX && py[by][bx] == fromTileY)) {
+            int nx = px[by][bx];
+            int ny = py[by][bx];
+            // if we reached the start but parent isn't set correctly break
+            if (nx == bx && ny == by) break;
+            bx = nx; by = ny;
+            if (bx == fromTileX && by == fromTileY) break;
+        }
+
+        // bx,by is the tile to move into from the origin
+        if (bx > fromTileX) return 0;
+        if (bx < fromTileX) return 180;
+        if (by > fromTileY) return 90;
+        if (by < fromTileY) return 270;
+        return -1;
     }
     
     private boolean isColliding(Pacman pacman, Ghost ghost) {

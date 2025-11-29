@@ -8,15 +8,19 @@ public class Ghost {
     private int x, y;
     private int size = Maze.TILE_SIZE;
     private int speed = 1;
+    private int returnSpeedMultiplier = 2; // speed multiplier while returning home
     private Color color;
     private int direction;
     private Random random = new Random();
+    // Home (ghost house) coordinates (where the ghost respawns)
+    private int homeX, homeY;
+    private boolean returningHome = false; // true while walking back to home
     
     public enum Mode { CHASE, SCATTER, FRIGHTENED, DEAD }
     private Mode mode = Mode.CHASE;
     private Mode previousMode = Mode.CHASE;
     private int frightenedTimer = 0; // ticks remaining (decremented once per tick)
-    private int deadTimer = 0; // ticks remaining while in DEAD state
+    private int deadTimer = 0; // ticks remaining while paused at home before reviving
     private Color baseColor;
     private int scatterTargetX, scatterTargetY;
     private int directionLockMs = 0; // prevent immediate redecisions to avoid oscillation
@@ -30,6 +34,8 @@ public class Ghost {
     public Ghost(int x, int y, Color color) {
         this.x = x;
         this.y = y;
+        this.homeX = x;
+        this.homeY = y;
         this.color = color;
         this.baseColor = color;
         // Start with a random direction
@@ -61,6 +67,10 @@ public class Ghost {
 
     public void setMode(Mode m, int durationMs) {
         if (m == Mode.FRIGHTENED) {
+            // Do not set frightened if the ghost is dead or is returning home
+            if (mode == Mode.DEAD || returningHome) {
+                return;
+            }
             // only enter frightened if not already frightened
             if (mode != Mode.FRIGHTENED) {
                 previousMode = mode;
@@ -74,9 +84,11 @@ public class Ghost {
                 frightenedTimer = Math.max(frightenedTimer, durationMs);
             }
         } else if (m == Mode.DEAD) {
-            // Enter dead mode: eyes-only. durationMs is ticks to remain dead.
+            // Enter dead mode: eyes-only. durationMs is ticks to remain paused at home after returning.
             mode = Mode.DEAD;
-            deadTimer = (durationMs > 0) ? durationMs : 60; // default ~1s
+            // When entering DEAD, start returning to home
+            returningHome = true;
+            deadTimer = (durationMs > 0) ? durationMs : 60; // pause duration once at home
             frightenedTimer = 0;
         } else {
             mode = m;
@@ -99,8 +111,12 @@ public class Ghost {
     // If the ghost is currently frightened, update its previousMode so it will
     // resume the correct global mode when frightened ends.
     public void setGlobalMode(Mode m) {
+        // Don't change global mode while a ghost is DEAD (or returning home)
         if (mode == Mode.FRIGHTENED) {
             previousMode = m;
+        } else if (mode == Mode.DEAD || returningHome) {
+            // keep DEAD state until it finishes returning/home pause
+            return;
         } else {
             mode = m;
             color = baseColor;
@@ -201,15 +217,20 @@ public class Ghost {
                 frightenedTimer = 0;
             }
         } else if (mode == Mode.DEAD) {
-            // While dead, stay put (we expect Maze to have teleported the ghost to center)
-            deadTimer -= 1;
-            if (deadTimer <= 0) {
-                mode = Mode.CHASE;
-                color = baseColor;
-                previousMode = Mode.CHASE;
-                deadTimer = 0;
+            if (returningHome) {
+                // still returning home: allow movement logic below to pick directions towards home
+                // do not decrement deadTimer yet
+            } else {
+                // paused at home, countdown to revive
+                deadTimer -= 1;
+                if (deadTimer <= 0) {
+                    mode = Mode.CHASE;
+                    color = baseColor;
+                    previousMode = Mode.CHASE;
+                    deadTimer = 0;
+                }
+                return; // skip movement while paused at home
             }
-            return; // skip movement while dead
         } else {
             // Occasionally change direction randomly when not in a targeted mode
             if (random.nextInt(50) == 0) {
@@ -231,7 +252,26 @@ public class Ghost {
 
         // Decide desired direction based on mode (only when aligned and not locked)
         if (aligned && !locked) {
-            if (mode == Mode.FRIGHTENED) {
+            if (mode == Mode.DEAD && returningHome) {
+                // Use maze pathfinding helper to get robust next direction towards home
+                int dir = maze.getNextDirectionTowards(x, y, homeX, homeY);
+                if (dir != -1) {
+                    direction = dir;
+                } else {
+                    // fallback to greedy if no path found
+                    int tx = homeX;
+                    int ty = homeY;
+                    int gx = x;
+                    int gy = y;
+                    int dxp = tx - gx;
+                    int dyp = ty - gy;
+                    if (Math.abs(dxp) > Math.abs(dyp)) {
+                        direction = dxp > 0 ? 0 : 180;
+                    } else {
+                        direction = dyp > 0 ? 90 : 270;
+                    }
+                }
+            } else if (mode == Mode.FRIGHTENED) {
             // Move away from Pacman
             int px = pacman.getX();
             int py = pacman.getY();
@@ -280,19 +320,20 @@ public class Ghost {
         }
 
         // Attempt movement separately on X and Y so ghosts don't clip corners
+        int moveSpeed = returningHome ? speed * returnSpeedMultiplier : speed;
         int dx = 0, dy = 0;
         switch (direction) {
             case 0: // Right
-                dx = speed;
+                dx = moveSpeed;
                 break;
             case 90: // Down
-                dy = speed;
+                dy = moveSpeed;
                 break;
             case 180: // Left
-                dx = -speed;
+                dx = -moveSpeed;
                 break;
             case 270: // Up
-                dy = -speed;
+                dy = -moveSpeed;
                 break;
         }
 
@@ -309,13 +350,15 @@ public class Ghost {
                 }
             }
             if (!collideX) {
-                // check collision with other ghosts
-                for (Ghost o : others) {
-                    if (o != this) {
-                        Rectangle otherRect = new Rectangle(o.getX(), o.getY(), o.getSize(), o.getSize());
-                        if (ghostRectX.intersects(otherRect)) {
-                            collideX = true;
-                            break;
+                // check collision with other ghosts (ignore if returningHome)
+                if (!returningHome) {
+                    for (Ghost o : others) {
+                        if (o != this) {
+                            Rectangle otherRect = new Rectangle(o.getX(), o.getY(), o.getSize(), o.getSize());
+                            if (ghostRectX.intersects(otherRect)) {
+                                collideX = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -348,13 +391,15 @@ public class Ghost {
                 }
             }
             if (!collideY) {
-                // check collision with other ghosts
-                for (Ghost o : others) {
-                    if (o != this) {
-                        Rectangle otherRect = new Rectangle(o.getX(), o.getY(), o.getSize(), o.getSize());
-                        if (ghostRectY.intersects(otherRect)) {
-                            collideY = true;
-                            break;
+                // check collision with other ghosts (ignore if returningHome)
+                if (!returningHome) {
+                    for (Ghost o : others) {
+                        if (o != this) {
+                            Rectangle otherRect = new Rectangle(o.getX(), o.getY(), o.getSize(), o.getSize());
+                            if (ghostRectY.intersects(otherRect)) {
+                                collideY = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -373,13 +418,11 @@ public class Ghost {
         }
 
         // After moving, if dead and reached maze center, revive
-        if (mode == Mode.DEAD) {
-            int centerX = maze.getCenterX();
-            int centerY = maze.getCenterY();
-            if (x == centerX && y == centerY) {
-                mode = Mode.CHASE;
-                color = baseColor;
-                previousMode = Mode.CHASE;
+        if (mode == Mode.DEAD && returningHome) {
+            if (x == homeX && y == homeY) {
+                // arrived home: start pause timer before reviving
+                returningHome = false;
+                // deadTimer was set when entering DEAD and will be counted down in the next ticks
             }
         }
     }
@@ -418,15 +461,17 @@ public class Ghost {
                 }
             }
             if (!collide) {
-                for (Ghost o : others) {
-                    if (o != this) {
-                        Rectangle otherRect = new Rectangle(o.getX(), o.getY(), o.getSize(), o.getSize());
-                        if (ghostRect.intersects(otherRect)) {
-                            collide = true;
-                            break;
+                    if (!returningHome) {
+                        for (Ghost o : others) {
+                            if (o != this) {
+                                Rectangle otherRect = new Rectangle(o.getX(), o.getY(), o.getSize(), o.getSize());
+                                if (ghostRect.intersects(otherRect)) {
+                                    collide = true;
+                                    break;
+                                }
+                            }
                         }
                     }
-                }
             }
             if (!collide) {
                 direction = d;
