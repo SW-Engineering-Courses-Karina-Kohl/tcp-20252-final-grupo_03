@@ -1,5 +1,7 @@
 import java.awt.*;
 import java.util.Random;
+import java.util.List;
+import java.awt.Rectangle;
 
 public class Ghost {
     private int x, y;
@@ -93,25 +95,66 @@ public class Ghost {
         g.fillOval(pupilRightX - pr, pupilRightY - pr, pupilSize, pupilSize);
     }
     
-    public void move() {
+    public void move(List<Wall> walls) {
         // Random movement for now - can be improved with pathfinding
         if (random.nextInt(10) == 0) {
             direction = random.nextInt(4) * 90; // Change direction randomly
         }
-        
+
+        // Attempt movement separately on X and Y so ghosts don't clip corners
+        int dx = 0, dy = 0;
         switch (direction) {
             case 0: // Right
-                x += speed;
+                dx = speed;
                 break;
             case 90: // Down
-                y += speed;
+                dy = speed;
                 break;
             case 180: // Left
-                x -= speed;
+                dx = -speed;
                 break;
             case 270: // Up
-                y -= speed;
+                dy = -speed;
                 break;
+        }
+
+        // Try horizontal move
+        if (dx != 0) {
+            int newX = x + dx;
+            Rectangle ghostRectX = new Rectangle(newX, y, size, size);
+            boolean collideX = false;
+            for (Wall w : walls) {
+                Rectangle wallRect = new Rectangle(w.getX(), w.getY(), w.getSize(), w.getSize());
+                if (ghostRectX.intersects(wallRect)) {
+                    collideX = true;
+                    break;
+                }
+            }
+            if (!collideX) {
+                x = newX;
+            } else {
+                // If blocked, pick a new random direction to avoid sticking
+                direction = random.nextInt(4) * 90;
+            }
+        }
+
+        // Try vertical move
+        if (dy != 0) {
+            int newY = y + dy;
+            Rectangle ghostRectY = new Rectangle(x, newY, size, size);
+            boolean collideY = false;
+            for (Wall w : walls) {
+                Rectangle wallRect = new Rectangle(w.getX(), w.getY(), w.getSize(), w.getSize());
+                if (ghostRectY.intersects(wallRect)) {
+                    collideY = true;
+                    break;
+                }
+            }
+            if (!collideY) {
+                y = newY;
+            } else {
+                direction = random.nextInt(4) * 90;
+            }
         }
     }
     
