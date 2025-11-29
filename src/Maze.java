@@ -81,16 +81,16 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
                     walls.add(new Wall(x, y));
                 }
                 else if(tile == 'r'){
-                    ghosts.add(new Ghost(x, y, Ghost.BLINKY_COLOR));
+                    ghosts.add(new Blinky(x, y));
                 }
                 else if(tile == 'p'){
-                    ghosts.add(new Ghost(x, y, Ghost.PINKY_COLOR));
+                    ghosts.add(new Pinky(x, y));
                 }
                 else if(tile == 'b'){
-                    ghosts.add(new Ghost(x, y, Ghost.INKY_COLOR));
+                    ghosts.add(new Inky(x, y));
                 }
                 else if(tile == 'o'){
-                    ghosts.add(new Ghost(x, y, Ghost.CLYDE_COLOR));
+                    ghosts.add(new Clyde(x, y));
                 }
             }
         }

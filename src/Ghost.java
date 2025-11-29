@@ -53,6 +53,11 @@ public class Ghost {
         }
     }
 
+    // Protected accessors for subclasses
+    protected int getScatterTargetX() { return scatterTargetX; }
+    protected int getScatterTargetY() { return scatterTargetY; }
+    protected Color getBaseColor() { return baseColor; }
+
     public void setMode(Mode m, int durationMs) {
         if (m == Mode.FRIGHTENED) {
             previousMode = mode;
@@ -220,13 +225,14 @@ public class Ghost {
                 direction = dyp > 0 ? 90 : 270;
             }
         } else {
-            // CHASE: simple greedy chase towards pacman
-            int px = pacman.getX();
-            int py = pacman.getY();
+            // CHASE: delegate to subclass-specific target calculation
+            int[] target = computeChaseTarget(pacman, others, maze);
+            int tx = target[0];
+            int ty = target[1];
             int gx = x;
             int gy = y;
-            int dxp = px - gx;
-            int dyp = py - gy;
+            int dxp = tx - gx;
+            int dyp = ty - gy;
             if (Math.abs(dxp) > Math.abs(dyp)) {
                 direction = dxp > 0 ? 0 : 180;
             } else {
@@ -333,6 +339,17 @@ public class Ghost {
                 }
             }
         }
+    }
+
+    /**
+     * Compute the chase target used by CHASE mode. Subclasses should override
+     * this to implement personality-specific targeting. Default behavior is
+     * to target the Pac-Man's current position.
+     *
+     * @return int[2] containing {targetX, targetY}
+     */
+    protected int[] computeChaseTarget(Pacman pacman, List<Ghost> others, Maze maze) {
+        return new int[] { pacman.getX(), pacman.getY() };
     }
 
     // Try orthogonal directions when blocked. If horiz=true, try up/down, else try left/right.
