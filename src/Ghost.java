@@ -425,6 +425,14 @@ public class Ghost {
                 // deadTimer was set when entering DEAD and will be counted down in the next ticks
             }
         }
+
+        // Teleport (wrap) horizontally like Pacman so ghosts can use the central shortcut
+        int screenWidth = Maze.COLUMNS * Maze.TILE_SIZE;
+        if (this.x > screenWidth) {
+            this.x = -this.size;
+        } else if (this.x < -this.size) {
+            this.x = screenWidth;
+        }
     }
 
     /**
