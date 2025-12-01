@@ -17,10 +17,12 @@ public class Level{
         
         window.setLocationRelativeTo(null);
         window.setVisible(true);
+        System.out.println("Window shown: " + window.isVisible());
     }
 
     public static void main(String[] args) {
-        initWindow();
+        // Ensure Swing UI is created on the Event Dispatch Thread
+        javax.swing.SwingUtilities.invokeLater(Level::initWindow);
     }
 }
 
