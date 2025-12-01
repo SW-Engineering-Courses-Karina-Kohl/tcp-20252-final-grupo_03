@@ -340,6 +340,13 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
         int toTileX = toX / TILE_SIZE;
         int toTileY = toY / TILE_SIZE;
 
+        // If either position is outside the maze grid (e.g. during tunnel wrap),
+        // bail out so callers can fallback to a greedy move. This avoids
+        // ArrayIndexOutOfBoundsExceptions when ghosts/pacman are temporarily
+        // positioned at negative coordinates (teleport tunnels).
+        if (fromTileX < 0 || fromTileX >= COLUMNS || fromTileY < 0 || fromTileY >= ROWS) return -1;
+        if (toTileX < 0 || toTileX >= COLUMNS || toTileY < 0 || toTileY >= ROWS) return -1;
+
         if (fromTileX == toTileX && fromTileY == toTileY) return -1;
 
         boolean[][] visited = new boolean[ROWS][COLUMNS];

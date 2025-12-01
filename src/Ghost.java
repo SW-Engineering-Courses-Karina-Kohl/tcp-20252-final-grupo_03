@@ -253,12 +253,9 @@ public class Ghost {
         // Decide desired direction based on mode (only when aligned and not locked)
         if (aligned && !locked) {
             if (mode == Mode.DEAD && returningHome) {
-                // Use maze pathfinding helper to get robust next direction towards home
-                int dir = maze.getNextDirectionTowards(x, y, homeX, homeY);
-                if (dir != -1) {
-                    direction = dir;
-                } else {
-                    // fallback to greedy if no path found
+                // If the ghost is temporarily outside the maze bounds (tunnel wrap),
+                // skip the BFS pathfinder to avoid invalid tile indices; fallback to greedy.
+                if (x < 0 || y < 0 || x / Maze.TILE_SIZE >= Maze.COLUMNS || y / Maze.TILE_SIZE >= Maze.ROWS) {
                     int tx = homeX;
                     int ty = homeY;
                     int gx = x;
@@ -269,6 +266,25 @@ public class Ghost {
                         direction = dxp > 0 ? 0 : 180;
                     } else {
                         direction = dyp > 0 ? 90 : 270;
+                    }
+                } else {
+                    // Use maze pathfinding helper to get robust next direction towards home
+                    int dir = maze.getNextDirectionTowards(x, y, homeX, homeY);
+                    if (dir != -1) {
+                        direction = dir;
+                    } else {
+                        // fallback to greedy if no path found
+                        int tx = homeX;
+                        int ty = homeY;
+                        int gx = x;
+                        int gy = y;
+                        int dxp = tx - gx;
+                        int dyp = ty - gy;
+                        if (Math.abs(dxp) > Math.abs(dyp)) {
+                            direction = dxp > 0 ? 0 : 180;
+                        } else {
+                            direction = dyp > 0 ? 90 : 270;
+                        }
                     }
                 }
             } else if (mode == Mode.FRIGHTENED) {
