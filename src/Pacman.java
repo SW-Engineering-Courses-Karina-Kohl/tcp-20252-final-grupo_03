@@ -1,11 +1,6 @@
 import java.awt.Graphics;
+import java.awt.Color;
 import java.awt.event.KeyEvent;
-import java.awt.image.BufferedImage;
-import javax.imageio.ImageIO;
-import java.io.File;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 
 public class Pacman {
     private int x, y;
@@ -15,64 +10,65 @@ public class Pacman {
     public static final int TURN_LEFT_QUEUE = 4;
     public static final int TURN_RIGHT_QUEUE = 6;
     public static final int TURN_DOWN_QUEUE = 2;
-    
-    private final Map<Integer, BufferedImage> images;
-    
+
     public int currentDirection = KeyEvent.VK_RIGHT;
     public int turnDirection = 6;
     public boolean willUpdate = true;
 
+    // Mouth animation
+    private int mouthAngle = 0; // current mouth half-angle
+    private boolean mouthOpening = true;
+    private final int mouthSpeed = 4; // degrees per frame
+    private final int mouthMaxAngle = 45; // max half-angle
+
     public Pacman(int startX, int startY) {
         this.x = startX;
         this.y = startY;
-        this.images = new HashMap<>();
-        
-        loadImages(); 
-    }
-
-    private void loadImages() {
-        try {
-            images.put(KeyEvent.VK_UP, ImageIO.read(getClass().getResource("/images/pacman_up.png")));
-            images.put(KeyEvent.VK_DOWN, ImageIO.read(getClass().getResource("/images/pacman_down.png")));
-            images.put(KeyEvent.VK_LEFT, ImageIO.read(getClass().getResource("/images/pacman_left.png")));
-            images.put(KeyEvent.VK_RIGHT, ImageIO.read(getClass().getResource("/images/pacman_right.png")));
-        } catch (IOException | IllegalArgumentException exc) {
-            System.out.println("Erro ao carregar imagem do Pac-Man: " + exc.getMessage());
-        }
     }
 
     public void draw(Graphics g) {
-        BufferedImage imageToDraw = images.get(currentDirection);
-        
-        if (imageToDraw != null) {
-            g.drawImage(imageToDraw, x, y, size, size, null);
+        // animate mouth angle
+        if (mouthOpening) {
+            mouthAngle += mouthSpeed;
+            if (mouthAngle >= mouthMaxAngle) {
+                mouthAngle = mouthMaxAngle;
+                mouthOpening = false;
+            }
+        } else {
+            mouthAngle -= mouthSpeed;
+            if (mouthAngle <= 0) {
+                mouthAngle = 0;
+                mouthOpening = true;
+            }
         }
-    }
 
-    //public void move(KeyEvent e) {
-    //    int key = e.getKeyCode();
-        
-    //    if (key == KeyEvent.VK_UP) {
-    //        this.y -= speed;
-    //        currentDirection = KeyEvent.VK_UP;
-    //    }
-    //    else if (key == KeyEvent.VK_RIGHT) {
-    //        this.x += speed;
-    //        currentDirection = KeyEvent.VK_RIGHT;
-    //    }
-    //    else if (key == KeyEvent.VK_DOWN) {
-    //        this.y += speed;
-    //        currentDirection = KeyEvent.VK_DOWN;
-    //    }
-    //    else if (key == KeyEvent.VK_LEFT) {
-    //        this.x -= speed;
-    //        currentDirection = KeyEvent.VK_LEFT;
-    //    }
-    //}
+        g.setColor(Color.YELLOW);
+
+        int startAngle = 0;
+        switch (currentDirection) {
+            case KeyEvent.VK_RIGHT:
+                startAngle = mouthAngle;
+                break;
+            case KeyEvent.VK_DOWN:
+                // corrected: DOWN should point to the bottom (270 degrees)
+                startAngle = 270 + mouthAngle;
+                break;
+            case KeyEvent.VK_LEFT:
+                startAngle = 180 + mouthAngle;
+                break;
+            case KeyEvent.VK_UP:
+                // corrected: UP should point to the top (90 degrees)
+                startAngle = 90 + mouthAngle;
+                break;
+        }
+
+        int arcAngle = 360 - mouthAngle * 2;
+        g.fillArc(x, y, size, size, startAngle, arcAngle);
+    }
 
     public void move(KeyEvent e) {
         int key = e.getKeyCode();
-        
+
         switch (key) {
             case KeyEvent.VK_UP -> this.turnDirection = 8;
             case KeyEvent.VK_RIGHT -> this.turnDirection = 6;
@@ -112,15 +108,11 @@ public class Pacman {
                 x -= speed;
                 break;
         }
-        //Teleporte
+        // Teleport wraparound horizontally
         int screenWidth = Maze.COLUMNS * Maze.TILE_SIZE;
-
-        //Se saiu completamente pela direita -> vai para a esquerda
         if (this.x > screenWidth) {
             this.x = -this.size;
-        } 
-        //Se saiu completamente pela esquerda -> vai para a direita
-        else if (this.x < -this.size) {
+        } else if (this.x < -this.size) {
             this.x = screenWidth;
         }
     }
