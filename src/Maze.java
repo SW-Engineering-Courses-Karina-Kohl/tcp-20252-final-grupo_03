@@ -45,6 +45,7 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
     private Timer timer;
     private int score = 0;
     private boolean gameOver = false;
+    private boolean paused = false;
     private int poweredUpTimer = 0;
     private GameTimer gameTimer;
     private final int POWERUP_DURATION = 400;
@@ -66,6 +67,82 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
 	gameTimer.start();
 
         setFocusable(true);
+        // Setup key bindings so pause/reset/enter work even if focus is elsewhere
+        setupKeyBindings();
+    }
+
+    // Configure key bindings using InputMap/ActionMap so keys work when window focused
+    private void setupKeyBindings() {
+        InputMap im = this.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap am = this.getActionMap();
+
+        im.put(KeyStroke.getKeyStroke('P'), "pauseToggle");
+        im.put(KeyStroke.getKeyStroke('p'), "pauseToggle");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_P, 0), "pauseToggle");
+        am.put("pauseToggle", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                togglePause();
+            }
+        });
+
+        im.put(KeyStroke.getKeyStroke('R'), "reset");
+        im.put(KeyStroke.getKeyStroke('r'), "reset");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_R, 0), "reset");
+        am.put("reset", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                resetGame();
+            }
+        });
+
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "enter");
+        am.put("enter", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (gameOver) resetGame();
+            }
+        });
+    }
+
+    private void togglePause() {
+        paused = !paused;
+        if (paused) {
+            timer.stop();
+            gameTimer.stop();
+            System.out.println("Game paused");
+        } else {
+            timer.start();
+            if (!gameOver) gameTimer.start();
+            System.out.println("Game resumed");
+        }
+        repaint();
+    }
+
+    // Reset the game state to initial layout
+    private void resetGame() {
+        // Stop timers while resetting
+        timer.stop();
+        gameTimer.reset();
+
+        // Clear current state
+        pellets.clear();
+        walls.clear();
+        ghosts.clear();
+        pacman = null;
+
+        // Reset flags and counters
+        score = 0;
+        poweredUpTimer = 0;
+        gameOver = false;
+        paused = false;
+
+        // Reload maze contents
+        loadMaze();
+
+        // Restart timers
+        timer.start();
+        gameTimer.start();
     }
 
     private void loadMaze(){
@@ -105,27 +182,33 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
     
     @Override
     public void actionPerformed(ActionEvent e) {
+        // If paused, don't update game logic but still repaint overlay
+        if (paused) {
+            repaint();
+            return;
+        }
+
         if (!gameOver) {
             // Update game state
             if (pacman.willUpdate) pacman.update();
             if (poweredUpTimer > 0) poweredUpTimer -= 1;
-            
+
             int deltaMs = timer.getDelay(); // tick duration (ms)
             // Move ghosts
             for (Ghost ghost : ghosts) {
                 ghost.move(walls, ghosts, pacman, deltaMs, this);
             }
-            
+
             // Check collisions
             checkCollisions();
-            
+
             // Check win condition
             if (pellets.isEmpty()) {
                 gameOver = true;
-		gameTimer.stop();
+                gameTimer.stop();
             }
         }
-        
+
         repaint();
     }
 
@@ -158,15 +241,39 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
         g.drawString((poweredUpTimer > 0) ? String.valueOf(poweredUpTimer) : " ", 250, 20);
 	gameTimer.draw(g, getWidth() - 100, 20);
         
-        // Draw game over message
+        // Draw game over message with restart hint
         if (gameOver) {
-	    gameTimer.stop();
+            gameTimer.stop();
+            String msg = pellets.isEmpty() ? "YOU WIN!" : "GAME OVER";
             g.setFont(new Font("Arial", Font.BOLD, 40));
-            if (pellets.isEmpty()) {
-                g.drawString("YOU WIN!", getWidth()/2 - 100, getHeight()/2);
-            } else {
-                g.drawString("GAME OVER", getWidth()/2 - 120, getHeight()/2);
-            }
+            FontMetrics fm = g.getFontMetrics();
+            int mw = fm.stringWidth(msg);
+            g.setColor(Color.WHITE);
+            g.drawString(msg, getWidth()/2 - mw/2, getHeight()/2);
+
+            String hint = "Aperte ENTER para reiniciar";
+            g.setFont(new Font("Arial", Font.PLAIN, 20));
+            fm = g.getFontMetrics();
+            int hw = fm.stringWidth(hint);
+            g.drawString(hint, getWidth()/2 - hw/2, getHeight()/2 + 40);
+        }
+
+        // Draw paused overlay
+        if (paused && !gameOver) {
+            g.setColor(new Color(0, 0, 0, 150));
+            g.fillRect(0, 0, getWidth(), getHeight());
+            g.setColor(Color.WHITE);
+            String title = "PAUSE";
+            g.setFont(new Font("Arial", Font.BOLD, 48));
+            FontMetrics fm = g.getFontMetrics();
+            int tw = fm.stringWidth(title);
+            g.drawString(title, getWidth()/2 - tw/2, getHeight()/2 - 10);
+
+            String sub = "aperte p para continuar";
+            g.setFont(new Font("Arial", Font.PLAIN, 20));
+            fm = g.getFontMetrics();
+            int sw = fm.stringWidth(sub);
+            g.drawString(sub, getWidth()/2 - sw/2, getHeight()/2 + 30);
         }
     }
 
@@ -177,7 +284,34 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
 
     @Override
     public void keyPressed(KeyEvent e) {
-        if (!gameOver) {
+        int key = e.getKeyCode();
+
+        // Pause toggle: P
+        if (key == KeyEvent.VK_P) {
+            paused = !paused;
+            if (paused) {
+                timer.stop();
+                gameTimer.stop();
+            } else {
+                timer.start();
+                if (!gameOver) gameTimer.start();
+            }
+            return;
+        }
+
+        // Reset: R
+        if (key == KeyEvent.VK_R) {
+            resetGame();
+            return;
+        }
+
+        // If game over, Enter restarts
+        if (key == KeyEvent.VK_ENTER && gameOver) {
+            resetGame();
+            return;
+        }
+
+        if (!gameOver && !paused) {
             pacman.move(e);
         }
     }
@@ -247,6 +381,8 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
                 if (ghost.getMode() == Ghost.Mode.FRIGHTENED) {
                     // Pacman eats frightened ghost: set ghost to DEAD; it will walk back to its home
                     ghost.setMode(Ghost.Mode.DEAD, GHOST_DEAD_DURATION);
+                    // Award points for eating a ghost
+                    score += 100;
                 } else if (ghost.getMode() == Ghost.Mode.DEAD) {
                     // already dead, ignore
                 } else {

@@ -10,13 +10,20 @@ public class Level{
         Maze maze = new Maze();
         window.add(maze);
 
+        // Add key listener both to the maze component and the window to improve
+        // key handling reliability (request focus afterwards).
         maze.addKeyListener(maze);
+        window.addKeyListener(maze);
 
         window.setResizable(false);
         window.pack();
         
         window.setLocationRelativeTo(null);
         window.setVisible(true);
+        // Request focus for key input on the maze component
+        maze.requestFocusInWindow();
+        maze.requestFocus();
+        window.requestFocus();
         System.out.println("Window shown: " + window.isVisible());
     }
 
