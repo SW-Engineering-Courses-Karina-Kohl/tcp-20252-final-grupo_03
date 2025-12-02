@@ -103,6 +103,18 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
                 if (gameOver) resetGame();
             }
         });
+
+        // Return to menu when paused: M
+        im.put(KeyStroke.getKeyStroke('M'), "toMenu");
+        im.put(KeyStroke.getKeyStroke('m'), "toMenu");
+        am.put("toMenu", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (paused) {
+                    goToMenu();
+                }
+            }
+        });
     }
 
     private void togglePause() {
@@ -117,6 +129,29 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
             System.out.println("Game resumed");
         }
         repaint();
+    }
+
+    // Switch back to the main menu: stop timers and replace content pane
+    private void goToMenu() {
+        // Ensure game is stopped
+        timer.stop();
+        gameTimer.stop();
+        gameOver = true;
+
+        // Find the top-level window and swap panels
+        java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+        if (w instanceof JFrame) {
+            JFrame frame = (JFrame) w;
+            SwingUtilities.invokeLater(() -> {
+                frame.getContentPane().removeAll();
+                MenuPanel menu = new MenuPanel(frame);
+                frame.getContentPane().add(menu);
+                frame.pack();
+                frame.setLocationRelativeTo(null);
+                menu.requestFocusInWindow();
+                menu.requestFocus();
+            });
+        }
     }
 
     // Reset the game state to initial layout
@@ -204,8 +239,8 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
 
             // Check win condition
             if (pellets.isEmpty()) {
-                gameOver = true;
-                gameTimer.stop();
+                // Victory
+                handleVictory();
             }
         }
 
@@ -274,6 +309,9 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
             fm = g.getFontMetrics();
             int sw = fm.stringWidth(sub);
             g.drawString(sub, getWidth()/2 - sw/2, getHeight()/2 + 30);
+            String sub2 = "aperte m para voltar ao menu";
+            int sw2 = g.getFontMetrics().stringWidth(sub2);
+            g.drawString(sub2, getWidth()/2 - sw2/2, getHeight()/2 + 60);
         }
     }
 
@@ -400,6 +438,54 @@ public class Maze extends JPanel implements KeyListener, ActionListener {
 
     public int getCenterY() {
         return (ROWS / 2) * TILE_SIZE;
+    }
+
+    // Handle victory: stop timers, prompt for 4-char name, save ranking and show top scores
+    private void handleVictory() {
+        gameOver = true;
+        timer.stop();
+        gameTimer.stop();
+
+        // Prompt for a 4-character name. Allow cancel (maps to ANON).
+        String name = null;
+        while (true) {
+            name = JOptionPane.showInputDialog(this, "You win! Enter your name (4 characters):", "Victory", JOptionPane.PLAIN_MESSAGE);
+            if (name == null) { // user cancelled
+                name = "ANON";
+                break;
+            }
+            name = name.trim();
+            if (name.length() == 4) break;
+            if (name.length() > 4) { name = name.substring(0,4); break; }
+            // too short
+            JOptionPane.showMessageDialog(this, "Please enter exactly 4 characters.", "Invalid name", JOptionPane.WARNING_MESSAGE);
+        }
+
+        // Normalize name to length 4
+        if (name.length() < 4) {
+            StringBuilder sb = new StringBuilder(name);
+            while (sb.length() < 4) sb.append(' ');
+            name = sb.toString();
+        }
+
+        // Save ranking
+        RankingManager.addScore(name, score, gameTimer.getElapsedTime());
+
+        // Show top 10
+        java.util.List<RankingManager.ScoreEntry> top = RankingManager.getTop(10);
+        StringBuilder sb = new StringBuilder();
+        int idx = 1;
+        for (RankingManager.ScoreEntry e : top) {
+            sb.append(idx++).append(". ").append(e.name).append(" - ").append(e.score).append(" - ").append(formatTime(e.timeMs)).append('\n');
+        }
+        JOptionPane.showMessageDialog(this, sb.toString(), "Top Scores", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private String formatTime(long ms) {
+        long totalSec = ms / 1000;
+        long min = totalSec / 60;
+        long sec = totalSec % 60;
+        return String.format("%02d:%02d", min, sec);
     }
     
     // Simple collision detection

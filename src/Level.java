@@ -7,13 +7,9 @@ public class Level{
         window = new JFrame("Pacman");
         window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-        Maze maze = new Maze();
-        window.add(maze);
-
-        // Add key listener both to the maze component and the window to improve
-        // key handling reliability (request focus afterwards).
-        maze.addKeyListener(maze);
-        window.addKeyListener(maze);
+        // Show main menu first
+        MenuPanel menu = new MenuPanel(window);
+        window.add(menu);
 
         window.setResizable(false);
         window.pack();
@@ -21,8 +17,8 @@ public class Level{
         window.setLocationRelativeTo(null);
         window.setVisible(true);
         // Request focus for key input on the maze component
-        maze.requestFocusInWindow();
-        maze.requestFocus();
+        menu.requestFocusInWindow();
+        menu.requestFocus();
         window.requestFocus();
         System.out.println("Window shown: " + window.isVisible());
     }
