@@ -288,49 +288,84 @@ public class Ghost {
                     }
                 }
             } else if (mode == Mode.FRIGHTENED) {
-            // Move away from Pacman
-            int px = pacman.getX();
-            int py = pacman.getY();
-            int gx = x;
-            int gy = y;
-            int dxp = gx - px;
-            int dyp = gy - py;
-            if (Math.abs(dxp) > Math.abs(dyp)) {
-                direction = dxp > 0 ? 0 : 180; // if ghost is to right of pacman, move right (0), else left
-            } else {
-                direction = dyp > 0 ? 90 : 270; // if below pacman, move down (90), else up
-            }
+                // FRIGHTENED: pick a random valid direction but avoid immediate reversal
+                int opposite = (direction + 180) % 360;
+                int[] candidates = new int[] {0, 90, 180, 270};
+                // shuffle simple by random order
+                for (int i = 0; i < candidates.length; i++) {
+                    int j = random.nextInt(candidates.length);
+                    int tmp = candidates[i]; candidates[i] = candidates[j]; candidates[j] = tmp;
+                }
+                boolean picked = false;
+                for (int d : candidates) {
+                    if (d == opposite) continue; // avoid reversing if possible
+                    int dxp = 0, dyp = 0;
+                    switch (d) { case 0: dxp = Maze.TILE_SIZE; break; case 90: dyp = Maze.TILE_SIZE; break; case 180: dxp = -Maze.TILE_SIZE; break; case 270: dyp = -Maze.TILE_SIZE; break; }
+                    int nx = x + dxp, ny = y + dyp;
+                    // check if move would collide with walls
+                    boolean collide = false;
+                    for (Wall w : walls) {
+                        Rectangle wallRect = new Rectangle(w.getX(), w.getY(), w.getSize(), w.getSize());
+                        if (new Rectangle(nx, ny, size, size).intersects(wallRect)) { collide = true; break; }
+                    }
+                    if (!collide) { direction = d; picked = true; break; }
+                }
+                if (!picked) {
+                    // as fallback allow reversal
+                    direction = opposite;
+                }
             } else if (mode == Mode.SCATTER) {
-            // Move towards scatter target corner
-            int tx = scatterTargetX;
-            int ty = scatterTargetY;
-            int gx = x;
-            int gy = y;
-            int dxp = tx - gx;
-            int dyp = ty - gy;
-            if (Math.abs(dxp) > Math.abs(dyp)) {
-                direction = dxp > 0 ? 0 : 180;
+                // SCATTER: prefer pathfinding to scatter corner to be smarter
+                int dir = maze.getNextDirectionTowards(x, y, getScatterTargetX(), getScatterTargetY());
+                if (dir != -1) {
+                    direction = dir;
+                } else {
+                    int tx = scatterTargetX;
+                    int ty = scatterTargetY;
+                    int gx = x;
+                    int gy = y;
+                    int dxp = tx - gx;
+                    int dyp = ty - gy;
+                    if (Math.abs(dxp) > Math.abs(dyp)) {
+                        direction = dxp > 0 ? 0 : 180;
+                    } else {
+                        direction = dyp > 0 ? 90 : 270;
+                    }
+                }
             } else {
-                direction = dyp > 0 ? 90 : 270;
+                // CHASE: compute personality-specific target and use pathfinder when possible
+                int[] target = computeChaseTarget(pacman, others, maze);
+                int tx = target[0];
+                int ty = target[1];
+                int dir = maze.getNextDirectionTowards(x, y, tx, ty);
+                if (dir != -1) {
+                    // avoid immediate reversal unless it's the only path
+                    int opposite = (direction + 180) % 360;
+                    if (dir == opposite) {
+                        // check if there is an alternative equally good path
+                        // try to get an alternate by temporarily blocking the opposite and requerying
+                        direction = dir; // if no better option, accept
+                    } else {
+                        direction = dir;
+                    }
+                } else {
+                    int gx = x;
+                    int gy = y;
+                    int dxp = tx - gx;
+                    int dyp = ty - gy;
+                    if (Math.abs(dxp) > Math.abs(dyp)) {
+                        direction = dxp > 0 ? 0 : 180;
+                    } else {
+                        direction = dyp > 0 ? 90 : 270;
+                    }
+                }
             }
-        } else {
-            // CHASE: delegate to subclass-specific target calculation
-            int[] target = computeChaseTarget(pacman, others, maze);
-            int tx = target[0];
-            int ty = target[1];
-            int gx = x;
-            int gy = y;
-            int dxp = tx - gx;
-            int dyp = ty - gy;
-            if (Math.abs(dxp) > Math.abs(dyp)) {
-                direction = dxp > 0 ? 0 : 180;
-            } else {
-                direction = dyp > 0 ? 90 : 270;
-            }
-            }
+
             // small random jitter when aligned to avoid perfect deadlocks
             if (random.nextInt(50) == 0) {
-                direction = random.nextInt(4) * 90;
+                // pick a random valid direction (not necessarily reverse)
+                int newDir = random.nextInt(4) * 90;
+                direction = newDir;
                 directionLockMs = 100; // brief lock
             }
         }
@@ -396,6 +431,14 @@ public class Ghost {
 
         // Try vertical move
         if (dy != 0) {
+            // If ghost is partially outside horizontally (tunnel), disallow vertical moves
+            int screenWidth = Maze.COLUMNS * Maze.TILE_SIZE;
+            int allowedXMin = 0;
+            int allowedXMax = screenWidth - this.size;
+            if (x < allowedXMin || x > allowedXMax) {
+                dy = 0; // skip vertical movement while in tunnel
+            }
+
             int newY = y + dy;
             Rectangle ghostRectY = new Rectangle(x, newY, size, size);
             boolean collideY = false;
@@ -421,6 +464,10 @@ public class Ghost {
                 }
             }
             if (!collideY) {
+                // Clamp vertical movement so ghosts cannot leave top/bottom bounds
+                int maxY = Maze.ROWS * Maze.TILE_SIZE - this.size;
+                if (newY < 0) newY = 0;
+                if (newY > maxY) newY = maxY;
                 y = newY;
             } else {
                 boolean moved = tryAlternateDirections(walls, others, false);
@@ -499,7 +546,15 @@ public class Ghost {
             }
             if (!collide) {
                 direction = d;
-                if (dx != 0) x = newX; else y = newY;
+                if (dx != 0) {
+                    x = newX;
+                } else {
+                    // Clamp Y so ghost stays inside vertical bounds when using alternate moves
+                    int maxY = Maze.ROWS * Maze.TILE_SIZE - this.size;
+                    if (newY < 0) newY = 0;
+                    if (newY > maxY) newY = maxY;
+                    y = newY;
+                }
                 return true;
             }
         }

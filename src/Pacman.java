@@ -94,22 +94,39 @@ public class Pacman {
     }
 
     public void update() {
-        switch (currentDirection) {
-            case KeyEvent.VK_UP:
-                y -= speed;
-                break;
-            case KeyEvent.VK_RIGHT:
-                x += speed;
-                break;
-            case KeyEvent.VK_DOWN:
-                y += speed;
-                break;
-            case KeyEvent.VK_LEFT:
-                x -= speed;
-                break;
-        }
-        // Teleport wraparound horizontally
+        // Determine allowed horizontal range for being 'inside' the maze
         int screenWidth = Maze.COLUMNS * Maze.TILE_SIZE;
+        int allowedXMin = 0;
+        int allowedXMax = screenWidth - this.size;
+
+        // If Pacman is partially outside (in the tunnel), disallow vertical moves
+        if ((currentDirection == KeyEvent.VK_UP || currentDirection == KeyEvent.VK_DOWN)
+                && (this.x < allowedXMin || this.x > allowedXMax)) {
+            // ignore vertical movement while in tunnel area
+        } else {
+            switch (currentDirection) {
+                case KeyEvent.VK_UP:
+                    y -= speed;
+                    break;
+                case KeyEvent.VK_DOWN:
+                    y += speed;
+                    break;
+            }
+        }
+
+        // Horizontal movement always allowed (so tunnel works)
+        if (currentDirection == KeyEvent.VK_RIGHT) {
+            x += speed;
+        } else if (currentDirection == KeyEvent.VK_LEFT) {
+            x -= speed;
+        }
+
+        // Prevent leaving vertically: clamp Y inside maze bounds
+        int maxY = Maze.ROWS * Maze.TILE_SIZE - this.size;
+        if (this.y < 0) this.y = 0;
+        if (this.y > maxY) this.y = maxY;
+
+        // Teleport wraparound horizontally
         if (this.x > screenWidth) {
             this.x = -this.size;
         } else if (this.x < -this.size) {
