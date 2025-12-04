@@ -1,0 +1,585 @@
+import java.awt.*;
+import java.util.Random;
+import java.util.List;
+import java.awt.Rectangle;
+import java.awt.Color;
+
+public class Ghost {
+    private int x, y;
+    private int size = Maze.TILE_SIZE;
+    private int speed = 1;
+    private int returnSpeedMultiplier = 2; // speed multiplier while returning home
+    private Color color;
+    private int direction;
+    private Random random = new Random();
+    // Home (ghost house) coordinates (where the ghost respawns)
+    private int homeX, homeY;
+    private boolean returningHome = false; // true while walking back to home
+    
+    public enum Mode { CHASE, SCATTER, FRIGHTENED, DEAD }
+    private Mode mode = Mode.CHASE;
+    private Mode previousMode = Mode.CHASE;
+    private int frightenedTimer = 0; // ticks remaining (decremented once per tick)
+    private int deadTimer = 0; // ticks remaining while paused at home before reviving
+    private Color baseColor;
+    private int scatterTargetX, scatterTargetY;
+    private int directionLockMs = 0; // prevent immediate redecisions to avoid oscillation
+    
+    // Ghost colors
+    public static final Color BLINKY_COLOR = Color.RED;
+    public static final Color PINKY_COLOR = Color.PINK;
+    public static final Color INKY_COLOR = Color.CYAN;
+    public static final Color CLYDE_COLOR = Color.ORANGE;
+
+    public Ghost(int x, int y, Color color) {
+        this.x = x;
+        this.y = y;
+        this.homeX = x;
+        this.homeY = y;
+        this.color = color;
+        this.baseColor = color;
+        // Start with a random direction
+        direction = random.nextInt(4) * 90; // 0, 90, 180, 270
+        // Default scatter corners based on color (approx):
+        // Red (Blinky) -> top-right, Pink -> top-left, Cyan -> bottom-right, Orange -> bottom-left
+        if (color.equals(BLINKY_COLOR)) {
+            scatterTargetX = (Maze.COLUMNS - 1) * Maze.TILE_SIZE;
+            scatterTargetY = 0;
+        } else if (color.equals(PINKY_COLOR)) {
+            scatterTargetX = 0;
+            scatterTargetY = 0;
+        } else if (color.equals(INKY_COLOR)) {
+            scatterTargetX = (Maze.COLUMNS - 1) * Maze.TILE_SIZE;
+            scatterTargetY = (Maze.ROWS - 1) * Maze.TILE_SIZE;
+        } else if (color.equals(CLYDE_COLOR)) {
+            scatterTargetX = 0;
+            scatterTargetY = (Maze.ROWS - 1) * Maze.TILE_SIZE;
+        } else {
+            scatterTargetX = 0;
+            scatterTargetY = 0;
+        }
+    }
+
+    // Protected accessors for subclasses
+    protected int getScatterTargetX() { return scatterTargetX; }
+    protected int getScatterTargetY() { return scatterTargetY; }
+    protected Color getBaseColor() { return baseColor; }
+
+    public void setMode(Mode m, int durationMs) {
+        if (m == Mode.FRIGHTENED) {
+            // Do not set frightened if the ghost is dead or is returning home
+            if (mode == Mode.DEAD || returningHome) {
+                return;
+            }
+            // only enter frightened if not already frightened
+            if (mode != Mode.FRIGHTENED) {
+                previousMode = mode;
+                mode = Mode.FRIGHTENED;
+                frightenedTimer = durationMs;
+                color = Color.BLUE;
+                // reverse direction when frightened
+                direction = (direction + 180) % 360;
+            } else {
+                // refresh timer while already frightened
+                frightenedTimer = Math.max(frightenedTimer, durationMs);
+            }
+        } else if (m == Mode.DEAD) {
+            // Enter dead mode: eyes-only. durationMs is ticks to remain paused at home after returning.
+            mode = Mode.DEAD;
+            // When entering DEAD, start returning to home
+            returningHome = true;
+            deadTimer = (durationMs > 0) ? durationMs : 60; // pause duration once at home
+            frightenedTimer = 0;
+        } else {
+            mode = m;
+            if (m != Mode.FRIGHTENED) {
+                color = baseColor;
+                frightenedTimer = 0;
+            }
+        }
+    }
+
+    public Mode getMode() {
+        return mode;
+    }
+
+    public void setDirection(int dir) {
+        this.direction = dir;
+    }
+
+    // Set the global mode (used by Maze to switch between CHASE/SCATTER).
+    // If the ghost is currently frightened, update its previousMode so it will
+    // resume the correct global mode when frightened ends.
+    public void setGlobalMode(Mode m) {
+        // Don't change global mode while a ghost is DEAD (or returning home)
+        if (mode == Mode.FRIGHTENED) {
+            previousMode = m;
+        } else if (mode == Mode.DEAD || returningHome) {
+            // keep DEAD state until it finishes returning/home pause
+            return;
+        } else {
+            mode = m;
+            color = baseColor;
+            frightenedTimer = 0;
+        }
+    }
+
+    public void draw(Graphics g) {
+        // If dead, draw only the eyes (eyes remain visible while returning to center)
+        if (mode == Mode.DEAD) {
+            // Eyes (white)
+            g.setColor(Color.WHITE);
+            g.fillOval(x + size/4, y + size/4, size/4, size/4);
+            g.fillOval(x + size/2, y + size/4, size/4, size/4);
+            // Pupils: draw as dark/black while dead
+            g.setColor(Color.BLACK);
+        } else {
+            // Ghost body
+            g.setColor(color);
+            g.fillRoundRect(x, y, size, size, size/2, size/2);
+            
+            // Ghost bottom wavy part
+            g.fillRect(x, y + size/2, size, size/2);
+            
+            // Eyes
+            g.setColor(Color.WHITE);
+            g.fillOval(x + size/4, y + size/4, size/4, size/4);
+            g.fillOval(x + size/2, y + size/4, size/4, size/4);
+            
+            // Pupils: compute centers and constrain inside the white eye areas
+            g.setColor(Color.BLUE);
+        }
+        int eyeW = size / 4;
+        int eyeH = size / 4;
+        int leftEyeX = x + size / 4;
+        int rightEyeX = x + size / 2;
+        int eyeY = y + size / 4;
+
+        int leftCenterX = leftEyeX + eyeW / 2;
+        int rightCenterX = rightEyeX + eyeW / 2;
+        int centerY = eyeY + eyeH / 2;
+
+        int pupilSize = size / 8;
+        int pr = pupilSize / 2; // pupil radius
+        int offset = Math.max(1, size / 16); // how far the pupil moves
+
+        int pupilLeftX = leftCenterX;
+        int pupilLeftY = centerY;
+        int pupilRightX = rightCenterX;
+        int pupilRightY = centerY;
+
+        switch (direction) {
+            case 0: // Right
+                pupilLeftX += offset;
+                pupilRightX += offset;
+                break;
+            case 90: // Down
+                pupilLeftY += offset;
+                pupilRightY += offset;
+                break;
+            case 180: // Left
+                pupilLeftX -= offset;
+                pupilRightX -= offset;
+                break;
+            case 270: // Up
+                pupilLeftY -= offset;
+                pupilRightY -= offset;
+                break;
+        }
+
+        // Clamp pupils so they never leave the white eye area
+        int leftMinX = leftEyeX + pr;
+        int leftMaxX = leftEyeX + eyeW - pr;
+        int rightMinX = rightEyeX + pr;
+        int rightMaxX = rightEyeX + eyeW - pr;
+        int minY = eyeY + pr;
+        int maxY = eyeY + eyeH - pr;
+
+        pupilLeftX = Math.max(leftMinX, Math.min(pupilLeftX, leftMaxX));
+        pupilLeftY = Math.max(minY, Math.min(pupilLeftY, maxY));
+        pupilRightX = Math.max(rightMinX, Math.min(pupilRightX, rightMaxX));
+        pupilRightY = Math.max(minY, Math.min(pupilRightY, maxY));
+
+        g.fillOval(pupilLeftX - pr, pupilLeftY - pr, pupilSize, pupilSize);
+        g.fillOval(pupilRightX - pr, pupilRightY - pr, pupilSize, pupilSize);
+    }
+    
+    // deltaMs: milliseconds elapsed since last tick (pass ~16)
+    public void move(List<Wall> walls, List<Ghost> others, Pacman pacman, int deltaMs, Maze maze) {
+        // Random movement for now - can be improved with pathfinding
+        // Update frightened timer
+        if (mode == Mode.FRIGHTENED) {
+            // frightenedTimer is in ticks (decrement once per move call)
+            frightenedTimer -= 1;
+            if (frightenedTimer <= 0) {
+                mode = previousMode;
+                color = baseColor;
+                frightenedTimer = 0;
+            }
+        } else if (mode == Mode.DEAD) {
+            if (returningHome) {
+                // still returning home: allow movement logic below to pick directions towards home
+                // do not decrement deadTimer yet
+            } else {
+                // paused at home, countdown to revive
+                deadTimer -= 1;
+                if (deadTimer <= 0) {
+                    mode = Mode.CHASE;
+                    color = baseColor;
+                    previousMode = Mode.CHASE;
+                    deadTimer = 0;
+                }
+                return; // skip movement while paused at home
+            }
+        } else {
+            // Occasionally change direction randomly when not in a targeted mode
+            if (random.nextInt(50) == 0) {
+                direction = random.nextInt(4) * 90; // small random jitter
+                directionLockMs = 200; // lock briefly to avoid immediate re-evaluation
+            }
+        }
+
+        // Decrement direction lock timer and if locked, skip re-deciding direction
+        boolean locked = false;
+        if (directionLockMs > 0) {
+            directionLockMs -= deltaMs;
+            if (directionLockMs > 0) locked = true;
+            else directionLockMs = 0;
+        }
+
+        // Only re-decide direction when the ghost is aligned to the tile grid
+        boolean aligned = (x % Maze.TILE_SIZE == 0) && (y % Maze.TILE_SIZE == 0);
+
+        // Decide desired direction based on mode (only when aligned and not locked)
+        if (aligned && !locked) {
+            if (mode == Mode.DEAD && returningHome) {
+                // If the ghost is temporarily outside the maze bounds (tunnel wrap),
+                // skip the BFS pathfinder to avoid invalid tile indices; fallback to greedy.
+                if (x < 0 || y < 0 || x / Maze.TILE_SIZE >= Maze.COLUMNS || y / Maze.TILE_SIZE >= Maze.ROWS) {
+                    int tx = homeX;
+                    int ty = homeY;
+                    int gx = x;
+                    int gy = y;
+                    int dxp = tx - gx;
+                    int dyp = ty - gy;
+                    if (Math.abs(dxp) > Math.abs(dyp)) {
+                        direction = dxp > 0 ? 0 : 180;
+                    } else {
+                        direction = dyp > 0 ? 90 : 270;
+                    }
+                } else {
+                    // Use maze pathfinding helper to get robust next direction towards home
+                    int dir = maze.getNextDirectionTowards(x, y, homeX, homeY);
+                    if (dir != -1) {
+                        direction = dir;
+                    } else {
+                        // fallback to greedy if no path found
+                        int tx = homeX;
+                        int ty = homeY;
+                        int gx = x;
+                        int gy = y;
+                        int dxp = tx - gx;
+                        int dyp = ty - gy;
+                        if (Math.abs(dxp) > Math.abs(dyp)) {
+                            direction = dxp > 0 ? 0 : 180;
+                        } else {
+                            direction = dyp > 0 ? 90 : 270;
+                        }
+                    }
+                }
+            } else if (mode == Mode.FRIGHTENED) {
+                // FRIGHTENED: pick a random valid direction but avoid immediate reversal
+                int opposite = (direction + 180) % 360;
+                int[] candidates = new int[] {0, 90, 180, 270};
+                // shuffle simple by random order
+                for (int i = 0; i < candidates.length; i++) {
+                    int j = random.nextInt(candidates.length);
+                    int tmp = candidates[i]; candidates[i] = candidates[j]; candidates[j] = tmp;
+                }
+                boolean picked = false;
+                for (int d : candidates) {
+                    if (d == opposite) continue; // avoid reversing if possible
+                    int dxp = 0, dyp = 0;
+                    switch (d) { case 0: dxp = Maze.TILE_SIZE; break; case 90: dyp = Maze.TILE_SIZE; break; case 180: dxp = -Maze.TILE_SIZE; break; case 270: dyp = -Maze.TILE_SIZE; break; }
+                    int nx = x + dxp, ny = y + dyp;
+                    // check if move would collide with walls
+                    boolean collide = false;
+                    for (Wall w : walls) {
+                        Rectangle wallRect = new Rectangle(w.getX(), w.getY(), w.getSize(), w.getSize());
+                        if (new Rectangle(nx, ny, size, size).intersects(wallRect)) { collide = true; break; }
+                    }
+                    if (!collide) { direction = d; picked = true; break; }
+                }
+                if (!picked) {
+                    // as fallback allow reversal
+                    direction = opposite;
+                }
+            } else if (mode == Mode.SCATTER) {
+                // SCATTER: prefer pathfinding to scatter corner to be smarter
+                int dir = maze.getNextDirectionTowards(x, y, getScatterTargetX(), getScatterTargetY());
+                if (dir != -1) {
+                    direction = dir;
+                } else {
+                    int tx = scatterTargetX;
+                    int ty = scatterTargetY;
+                    int gx = x;
+                    int gy = y;
+                    int dxp = tx - gx;
+                    int dyp = ty - gy;
+                    if (Math.abs(dxp) > Math.abs(dyp)) {
+                        direction = dxp > 0 ? 0 : 180;
+                    } else {
+                        direction = dyp > 0 ? 90 : 270;
+                    }
+                }
+            } else {
+                // CHASE: compute personality-specific target and use pathfinder when possible
+                int[] target = computeChaseTarget(pacman, others, maze);
+                int tx = target[0];
+                int ty = target[1];
+                int dir = maze.getNextDirectionTowards(x, y, tx, ty);
+                if (dir != -1) {
+                    // avoid immediate reversal unless it's the only path
+                    int opposite = (direction + 180) % 360;
+                    if (dir == opposite) {
+                        // check if there is an alternative equally good path
+                        // try to get an alternate by temporarily blocking the opposite and requerying
+                        direction = dir; // if no better option, accept
+                    } else {
+                        direction = dir;
+                    }
+                } else {
+                    int gx = x;
+                    int gy = y;
+                    int dxp = tx - gx;
+                    int dyp = ty - gy;
+                    if (Math.abs(dxp) > Math.abs(dyp)) {
+                        direction = dxp > 0 ? 0 : 180;
+                    } else {
+                        direction = dyp > 0 ? 90 : 270;
+                    }
+                }
+            }
+
+            // small random jitter when aligned to avoid perfect deadlocks
+            if (random.nextInt(50) == 0) {
+                // pick a random valid direction (not necessarily reverse)
+                int newDir = random.nextInt(4) * 90;
+                direction = newDir;
+                directionLockMs = 100; // brief lock
+            }
+        }
+
+        // Attempt movement separately on X and Y so ghosts don't clip corners
+        int moveSpeed = returningHome ? speed * returnSpeedMultiplier : speed;
+        int dx = 0, dy = 0;
+        switch (direction) {
+            case 0: // Right
+                dx = moveSpeed;
+                break;
+            case 90: // Down
+                dy = moveSpeed;
+                break;
+            case 180: // Left
+                dx = -moveSpeed;
+                break;
+            case 270: // Up
+                dy = -moveSpeed;
+                break;
+        }
+
+        // Try horizontal move
+        if (dx != 0) {
+            int newX = x + dx;
+            Rectangle ghostRectX = new Rectangle(newX, y, size, size);
+            boolean collideX = false;
+            for (Wall w : walls) {
+                Rectangle wallRect = new Rectangle(w.getX(), w.getY(), w.getSize(), w.getSize());
+                if (ghostRectX.intersects(wallRect)) {
+                    collideX = true;
+                    break;
+                }
+            }
+            if (!collideX) {
+                // check collision with other ghosts (ignore if returningHome)
+                if (!returningHome) {
+                    for (Ghost o : others) {
+                        if (o != this) {
+                            Rectangle otherRect = new Rectangle(o.getX(), o.getY(), o.getSize(), o.getSize());
+                            if (ghostRectX.intersects(otherRect)) {
+                                collideX = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (!collideX) {
+                x = newX;
+            } else {
+                // If blocked, pick an alternative direction (try orthogonal moves)
+                boolean moved = tryAlternateDirections(walls, others, true);
+                if (!moved) {
+                    direction = random.nextInt(4) * 90;
+                }
+                else {
+                    // If we successfully changed direction, lock briefly to avoid flip-flopping
+                    directionLockMs = 200;
+                }
+            }
+        }
+
+        // Try vertical move
+        if (dy != 0) {
+            // If ghost is partially outside horizontally (tunnel), disallow vertical moves
+            int screenWidth = Maze.COLUMNS * Maze.TILE_SIZE;
+            int allowedXMin = 0;
+            int allowedXMax = screenWidth - this.size;
+            if (x < allowedXMin || x > allowedXMax) {
+                dy = 0; // skip vertical movement while in tunnel
+            }
+
+            int newY = y + dy;
+            Rectangle ghostRectY = new Rectangle(x, newY, size, size);
+            boolean collideY = false;
+            for (Wall w : walls) {
+                Rectangle wallRect = new Rectangle(w.getX(), w.getY(), w.getSize(), w.getSize());
+                if (ghostRectY.intersects(wallRect)) {
+                    collideY = true;
+                    break;
+                }
+            }
+            if (!collideY) {
+                // check collision with other ghosts (ignore if returningHome)
+                if (!returningHome) {
+                    for (Ghost o : others) {
+                        if (o != this) {
+                            Rectangle otherRect = new Rectangle(o.getX(), o.getY(), o.getSize(), o.getSize());
+                            if (ghostRectY.intersects(otherRect)) {
+                                collideY = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (!collideY) {
+                // Clamp vertical movement so ghosts cannot leave top/bottom bounds
+                int maxY = Maze.ROWS * Maze.TILE_SIZE - this.size;
+                if (newY < 0) newY = 0;
+                if (newY > maxY) newY = maxY;
+                y = newY;
+            } else {
+                boolean moved = tryAlternateDirections(walls, others, false);
+                if (!moved) {
+                    direction = random.nextInt(4) * 90;
+                }
+                else {
+                    directionLockMs = 200;
+                }
+            }
+        }
+
+        // After moving, if dead and reached maze center, revive
+        if (mode == Mode.DEAD && returningHome) {
+            if (x == homeX && y == homeY) {
+                // arrived home: start pause timer before reviving
+                returningHome = false;
+                // deadTimer was set when entering DEAD and will be counted down in the next ticks
+            }
+        }
+
+        // Teleport (wrap) horizontally like Pacman so ghosts can use the central shortcut
+        int screenWidth = Maze.COLUMNS * Maze.TILE_SIZE;
+        if (this.x > screenWidth) {
+            this.x = -this.size;
+        } else if (this.x < -this.size) {
+            this.x = screenWidth;
+        }
+    }
+
+    /**
+     * Compute the chase target used by CHASE mode. Subclasses should override
+     * this to implement personality-specific targeting. Default behavior is
+     * to target the Pac-Man's current position.
+     *
+     * @return int[2] containing {targetX, targetY}
+     */
+    protected int[] computeChaseTarget(Pacman pacman, List<Ghost> others, Maze maze) {
+        return new int[] { pacman.getX(), pacman.getY() };
+    }
+
+    // Try orthogonal directions when blocked. If horiz=true, try up/down, else try left/right.
+    private boolean tryAlternateDirections(List<Wall> walls, List<Ghost> others, boolean horiz) {
+        int[] dirs = horiz ? new int[] {90, 270} : new int[] {0, 180};
+        for (int d : dirs) {
+            int dx = 0, dy = 0;
+            switch (d) {
+                case 0: dx = speed; break;
+                case 90: dy = speed; break;
+                case 180: dx = -speed; break;
+                case 270: dy = -speed; break;
+            }
+            int newX = x + dx;
+            int newY = y + dy;
+            Rectangle ghostRect = new Rectangle(newX, newY, size, size);
+            boolean collide = false;
+            for (Wall w : walls) {
+                Rectangle wallRect = new Rectangle(w.getX(), w.getY(), w.getSize(), w.getSize());
+                if (ghostRect.intersects(wallRect)) {
+                    collide = true;
+                    break;
+                }
+            }
+            if (!collide) {
+                    if (!returningHome) {
+                        for (Ghost o : others) {
+                            if (o != this) {
+                                Rectangle otherRect = new Rectangle(o.getX(), o.getY(), o.getSize(), o.getSize());
+                                if (ghostRect.intersects(otherRect)) {
+                                    collide = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+            }
+            if (!collide) {
+                direction = d;
+                if (dx != 0) {
+                    x = newX;
+                } else {
+                    // Clamp Y so ghost stays inside vertical bounds when using alternate moves
+                    int maxY = Maze.ROWS * Maze.TILE_SIZE - this.size;
+                    if (newY < 0) newY = 0;
+                    if (newY > maxY) newY = maxY;
+                    y = newY;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // Getters for collision detection
+    public int getX() {
+        return x;
+    }
+    
+    public int getY() {
+        return y;
+    }
+    
+    public int getSize() {
+        return size;
+    }
+    
+    // Setters for position adjustment
+    public void setX(int x) {
+        this.x = x;
+    }
+    
+    public void setY(int y) {
+        this.y = y;
+    }
+}
