@@ -1,4 +1,4 @@
-name: Build
+name: SonarCloud Scan
 
 on:
   push:
@@ -7,23 +7,22 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  sonarqube:
-    name: SonarCloud
+  analyze:
+    name: Build & Analyze
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up JDK
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # Compile Java manually (since repo has no Maven/Gradle)
-      - name: Build Java
+      - name: Compile Java sources
         run: |
           mkdir -p bin
           javac -d bin $(find src -name "*.java")
